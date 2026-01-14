@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="stylesheet" href="style.css" />
+  <title>헌금 정리</title>
+</head>
+<body>
+  <header class="app-header">
+    <div class="title">헌금 정리</div>
+    <div class="right">
+      <button id="btnLock" class="btn ghost" title="잠금">잠금</button>
+    </div>
+  </header>
+
+  <!-- 잠금 화면 -->
+  <section id="lockScreen" class="overlay hidden" aria-hidden="true">
+    <div class="card">
+      <h2 id="lockTitle">잠금 해제</h2>
+      <p class="muted" id="lockHint">PIN을 입력해 주세요.</p>
+
+      <div class="pin-row">
+        <input id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="8" placeholder="PIN (4~8자리)" />
+        <button id="btnPinOk" class="btn primary">확인</button>
+      </div>
+
+      <div class="row">
+        <button id="btnResetPin" class="btn danger ghost hidden">PIN 초기화</button>
+      </div>
+
+      <p class="tiny muted">
+        * PIN은 기기(브라우저)에만 저장됩니다. (로컬 저장)
+      </p>
+    </div>
+  </section>
+
+  <main class="container">
+    <nav class="tabs">
+      <button class="tab active" data-tab="entry">입력</button>
+      <button class="tab" data-tab="person">개인별</button>
+      <button class="tab" data-tab="type">헌금종류별</button>
+      <button class="tab" data-tab="date">날짜별</button>
+        <button class="tab" data-tab="week">주간</button>
+    </nav>
+
+    <!-- 입력 탭 -->
+    <section id="tab-entry" class="panel">
+      <div class="panel-header">
+        <div class="field">
+          <label>날짜</label>
+          <input id="entryDate" type="date" />
+        </div>
+
+        <div class="field">
+          <label>헌금종류</label>
+          <select id="donationType"></select>
+        </div>
+
+        <div class="field grow">
+          <label>새 헌금종류 추가</label>
+          <div class="inline">
+            <input id="newTypeName" type="text" placeholder="예: 십일조, 감사헌금..." />
+            <button id="btnAddType" class="btn">추가</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="table">
+        <div class="thead">
+          <div>헌금자(실명)</div>
+          <div>금액(원)</div>
+          <div></div>
+        </div>
+        <div id="rows"></div>
+      </div>
+
+      <div class="actions">
+        <button id="btnAddRow" class="btn">+ 행 추가</button>
+        <button id="btnSave" class="btn primary">저장</button>
+      </div>
+
+      <div class="notice muted">
+        팁: 같은 날짜에 다른 종류도 입력하려면, 종류를 바꾸고 다시 저장하시면 됩니다.
+      </div>
+    </section>
+
+    <!-- 개인별 -->
+    <section id="tab-person" class="panel hidden">
+      <div class="filters">
+        <div class="field">
+          <label>연도</label>
+          <select id="yearPerson"></select>
+        </div>
+        <div class="field grow">
+          <label>검색(이름)</label>
+          <input id="personSearch" type="text" placeholder="예: 홍길동" />
+        </div>
+      </div>
+      <div id="personSummary" class="list"></div>
+    </section>
+
+    <!-- 종류별 -->
+    <section id="tab-type" class="panel hidden">
+      <div class="filters">
+        <div class="field">
+          <label>연도</label>
+          <select id="yearType"></select>
+        </div>
+      </div>
+      <div id="typeSummary" class="list"></div>
+    </section>
+
+    <!-- 날짜별 -->
+    <section id="tab-date" class="panel hidden">
+      <div class="filters">
+        <div class="field">
+          <label>연도</label>
+          <select id="yearDate"></select>
+        </div>
+      </div>
+      <div id="dateSummary" class="list"></div>
+    </section>
+    <section id="tab-week" class="panel hidden">
+  <div class="filters">
+    <div class="field">
+      <label>연도</label>
+      <select id="yearWeek"></select>
+    </div>
+  </div>
+  <div id="weekSummary" class="list"></div>
+</section>
+
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
