@@ -19,18 +19,108 @@ function toYMD(d){
   const dd = String(d.getDate()).padStart(2,"0");
   return `${yyyy}-${mm}-${dd}`;
 }
+function parseYMD(s){
+  const [y,m,d] = s.split("-").map(Number);
+  return new Date(y, m-1, d);
+}
+function toYMD(d){
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const dd = String(d.getDate()).padStart(2,"0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+function addDaysYMD(dateStr, days){
+  const dt = parseYMD(dateStr);
+  dt.setDate(dt.getDate() + days);
+  return toYMD(dt);
+}
+function ymdOfYear(y, mm, dd){
+  return toYMD(new Date(y, mm-1, dd));
+}
+
+// 해당 날짜가 속한 해의 "첫 번째 주일(일요일)" (1/1 포함, 그 이후 첫 일요일)
+function firstSundayOfYear(y){
+  const jan1 = new Date(y, 0, 1);
+  const day = jan1.getDay(); // 0=일
+  const add = (7 - day) % 7; // jan1이 일요일이면 0
+  const d = new Date(y, 0, 1 + add);
+  return toYMD(d);
+}
+
+// dateStr(YYYY-MM-DD) 이후(또는 당일)의 일요일
+function nextOrSameSunday(dateStr){
+  const dt = parseYMD(dateStr);
+  const day = dt.getDay(); // 0..6
+  const add = (7 - day) % 7;
+  dt.setDate(dt.getDate() + add);
+  return toYMD(dt);
+}
+
+// dateStr 이전(또는 당일)의 일요일
+function prevOrSameSunday(dateStr){
+  const dt = parseYMD(dateStr);
+  const day = dt.getDay();
+  dt.setDate(dt.getDate() - day);
+  return toYMD(dt);
+}
+
+// dateStr "이전의" 일요일(당일이 일요일이면 -7)
+function prevStrictSunday(dateStr){
+  const s = prevOrSameSunday(dateStr);
+  return (s === dateStr) ? addDaysYMD(s, -7) : s;
+}
+
+/**
+ * ✅ 최종: 날짜가 속한 "정산일" 계산
+ * - 기본: 다음/당일 주일
+ * - 연말 특례: 다음 주일이 다음 해로 넘어가면 정산일은 12/31
+ */
+function settlementEnd(dateStr){
+  const y = yearOf(dateStr);
+  const dec31 = ymdOfYear(y, 12, 31);
+  const nextSun = nextOrSameSunday(dateStr);
+  // 다음/당일 주일이 내년으로 넘어가면 마지막 정산은 12/31
+  if (nextSun > dec31) return dec31;
+  return nextSun;
+}
+
+/**
+ * ✅ 정산주 기간 시작일 계산(표시용)
+ * - 첫 정산주(해당 해 첫 주일): 1/1부터 시작
+ * - 마지막 정산주(12/31): 직전 정산일 다음날부터 시작
+ * - 그 외: (정산일-6) 월요일부터
+ */
+function settlementStart(weekEndStr){
+  const y = yearOf(weekEndStr);
+  const jan1 = ymdOfYear(y, 1, 1);
+  const dec31 = ymdOfYear(y, 12, 31);
+  const firstSun = firstSundayOfYear(y);
+
+  if (weekEndStr === firstSun) {
+    return jan1; // ✅ 연초 특례
+  }
+
+  if (weekEndStr === dec31) {
+    // ✅ 연말 특례: 직전 정산일(일요일)을 구해서 다음날이 시작
+    const prevSun = prevStrictSunday(dec31); // 12/31이 일요일이어도 -7 처리
+    return addDaysYMD(prevSun, 1);
+  }
+
+  // ✅ 일반: 월~일
+  return addDaysYMD(weekEndStr, -6);
+}
 
 // dateStr(YYYY-MM-DD)이 속한 주의 "정산일(일요일)"을 반환
 // - 일요일이면 그대로 그 날짜
 // - 월~토이면 "다가오는 일요일" 날짜
-function weekEndSunday(dateStr){
-  const [y,m,d] = dateStr.split("-").map(Number);
-  const dt = new Date(y, m-1, d);
-  const day = dt.getDay(); // 0=일 ... 6=토
-  const add = (7 - day) % 7; // 일(0)이면 0, 월(1)이면 6, 토(6)이면 1
-  dt.setDate(dt.getDate() + add);
-  return toYMD(dt);
-}
+//function weekEndSunday(dateStr){
+  //const [y,m,d] = dateStr.split("-").map(Number);
+  //const dt = new Date(y, m-1, d);
+//  const day = dt.getDay(); // 0=일 ... 6=토
+//  const add = (7 - day) % 7; // 일(0)이면 0, 월(1)이면 6, 토(6)이면 1
+//  dt.setDate(dt.getDate() + add);
+//  return toYMD(dt);
+//}
 
 
 
@@ -295,7 +385,7 @@ async function setupEntry(){
       items.push({
         date,
         year: yearOf(date),
-        weekStart: weekEndSunday(date), // ✅ 주간정산일(일요일)
+        weekEnd: settlementEnd(date), // ✅ 주간 정산일(특례 반영)
         type,
         person,
         amount,
@@ -417,37 +507,34 @@ function renderReports(){
     const parts = [...byType2.entries()].sort((a,b)=>b[1]-a[1]).map(([k,v]) => `${k} ${fmt(v)}원`);
     return parts.length ? parts.join(" · ") : "";
   });
-      // 주간(정산일=일요일 마감)
-  fillYearSelect("yearWeek");
-  const yW = Number($("yearWeek").value);
+  // 주간(정산일=주일, 연초/연말 특례)
+fillYearSelect("yearWeek");
+const yW = Number($("yearWeek").value);
 
-  const byWeek = new Map();
-  for (const t of currentTx) {
-    const we = t.weekEnd || weekEndSunday(t.date);
-    const weYear = yearOf(we); // ✅ 주간 연도는 정산일 연도 기준
-    if (weYear !== yW) continue;
-    byWeek.set(we, (byWeek.get(we) || 0) + t.amount);
-  }
+const byWeek = new Map();
+for (const t of currentTx) {
+  const we = t.weekEnd || settlementEnd(t.date);
+  const weYear = yearOf(we); // ✅ 주간은 정산일의 연도로 귀속
+  if (weYear !== yW) continue;
+  byWeek.set(we, (byWeek.get(we) || 0) + t.amount);
+}
 
-  const listW = [...byWeek.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
+const listW = [...byWeek.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
 
-  renderList("weekSummary", listW, (we) => {
-    // 범위: 월~일(정산일)
-    const [y,m,d] = we.split("-").map(Number);
-    const end = new Date(y, m-1, d);   // 일요일
-    const start = new Date(y, m-1, d);
-    start.setDate(start.getDate() - 6); // 월요일
+renderList("weekSummary", listW, (we) => {
+  const start = settlementStart(we);
+  const range = `${start} ~ ${we} (정산일)`;
 
-    const range = `${toYMD(start)} ~ ${toYMD(end)} (정산일)`;
+  const mine = currentTx.filter(t => (t.weekEnd || settlementEnd(t.date)) === we);
+  const byType2 = groupSum(mine, t => t.type);
+  const parts = [...byType2.entries()]
+    .sort((a,b)=>b[1]-a[1])
+    .map(([k,v]) => `${k} ${fmt(v)}원`);
 
-    const mine = currentTx.filter(t => (t.weekEnd || weekEndSunday(t.date)) === we);
-    const byType2 = groupSum(mine, t => t.type);
-    const parts = [...byType2.entries()]
-      .sort((a,b)=>b[1]-a[1])
-      .map(([k,v]) => `${k} ${fmt(v)}원`);
+  return `${range}<br/>${parts.length ? parts.join(" · ") : ""}`;
+});
 
-    return `${range}<br/>${parts.length ? parts.join(" · ") : ""}`;
-  });
+  
 
 
 }
