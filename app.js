@@ -20,14 +20,19 @@ function toYMD(d){
   return `${yyyy}-${mm}-${dd}`;
 }
 
-// dateStr(YYYY-MM-DD)이 속한 주의 "일요일" 날짜를 반환
-function weekStartSunday(dateStr){
+// dateStr(YYYY-MM-DD)이 속한 주의 "정산일(일요일)"을 반환
+// - 일요일이면 그대로 그 날짜
+// - 월~토이면 "다가오는 일요일" 날짜
+function weekEndSunday(dateStr){
   const [y,m,d] = dateStr.split("-").map(Number);
   const dt = new Date(y, m-1, d);
-  const day = dt.getDay(); // 0=일,1=월,...6=토
-  dt.setDate(dt.getDate() - day); // 그 주의 일요일로 이동
+  const day = dt.getDay(); // 0=일 ... 6=토
+  const add = (7 - day) % 7; // 일(0)이면 0, 월(1)이면 6, 토(6)이면 1
+  dt.setDate(dt.getDate() + add);
   return toYMD(dt);
 }
+
+
 
 // ---------- 상태 ----------
 let lastActivity = Date.now();
@@ -179,6 +184,34 @@ function makeRow(name = "", amount = "") {
     // 숫자만
     amountInput.value = amountInput.value.replace(/[^\d]/g, "");
   });
+    const tryAutoAddRow = (e) => {
+    const rowsWrap = $("rows");
+    const isLastRow = rowsWrap.lastElementChild === row;
+
+    const personVal = nameInput.value.trim();
+    const amountVal = amountInput.value.trim();
+
+    if (!isLastRow) return;
+    if (!personVal || !amountVal) return; // 둘 다 있어야 자동 추가
+
+    // 새 행 추가
+    const newRow = makeRow();
+    rowsWrap.appendChild(newRow);
+
+    // 새 행의 이름칸으로 포커스 이동
+    const newNameInput = newRow.querySelector("input");
+    setTimeout(() => newNameInput.focus(), 0);
+  };
+
+  amountInput.addEventListener("keydown", (e) => {
+    // 마지막 금액칸에서 Tab(앞으로) 또는 Enter면 행 추가
+    if ((e.key === "Tab" && !e.shiftKey) || e.key === "Enter") {
+      // Tab은 기본 동작을 막고 우리가 새 행으로 이동시키기
+      e.preventDefault();
+      tryAutoAddRow(e);
+    }
+  });
+
 
   const delBtn = document.createElement("button");
   delBtn.className = "icon-btn";
@@ -262,7 +295,7 @@ async function setupEntry(){
       items.push({
         date,
         year: yearOf(date),
-        weekStart: weekStartSunday(date), // ✅ 주간(일요일 시작) 키
+        weekStart: weekEndSunday(date), // ✅ 주간정산일(일요일)
         type,
         person,
         amount,
@@ -384,34 +417,38 @@ function renderReports(){
     const parts = [...byType2.entries()].sort((a,b)=>b[1]-a[1]).map(([k,v]) => `${k} ${fmt(v)}원`);
     return parts.length ? parts.join(" · ") : "";
   });
-    // 주간(일요일 시작)
+      // 주간(정산일=일요일 마감)
   fillYearSelect("yearWeek");
   const yW = Number($("yearWeek").value);
-  const txW = currentTx.filter(t => t.year === yW);
 
-  // 기존 데이터에 weekStart가 없을 수도 있으니 fallback 계산
   const byWeek = new Map();
-  for (const t of txW) {
-    const ws = t.weekStart || weekStartSunday(t.date);
-    byWeek.set(ws, (byWeek.get(ws) || 0) + t.amount);
+  for (const t of currentTx) {
+    const we = t.weekEnd || weekEndSunday(t.date);
+    const weYear = yearOf(we); // ✅ 주간 연도는 정산일 연도 기준
+    if (weYear !== yW) continue;
+    byWeek.set(we, (byWeek.get(we) || 0) + t.amount);
   }
 
-  // 주차는 일요일 날짜 기준으로 정렬
   const listW = [...byWeek.entries()].sort((a,b)=>a[0].localeCompare(b[0]));
 
-  renderList("weekSummary", listW, (ws) => {
-    // ws(일요일) ~ 토요일 표시
-    const [y,m,d] = ws.split("-").map(Number);
-    const s = new Date(y, m-1, d);
-    const e = new Date(y, m-1, d);
-    e.setDate(e.getDate() + 6);
-    const range = `${toYMD(s)} ~ ${toYMD(e)}`;
+  renderList("weekSummary", listW, (we) => {
+    // 범위: 월~일(정산일)
+    const [y,m,d] = we.split("-").map(Number);
+    const end = new Date(y, m-1, d);   // 일요일
+    const start = new Date(y, m-1, d);
+    start.setDate(start.getDate() - 6); // 월요일
 
-    const mine = txW.filter(t => (t.weekStart || weekStartSunday(t.date)) === ws);
+    const range = `${toYMD(start)} ~ ${toYMD(end)} (정산일)`;
+
+    const mine = currentTx.filter(t => (t.weekEnd || weekEndSunday(t.date)) === we);
     const byType2 = groupSum(mine, t => t.type);
-    const parts = [...byType2.entries()].sort((a,b)=>b[1]-a[1]).map(([k,v]) => `${k} ${fmt(v)}원`);
+    const parts = [...byType2.entries()]
+      .sort((a,b)=>b[1]-a[1])
+      .map(([k,v]) => `${k} ${fmt(v)}원`);
+
     return `${range}<br/>${parts.length ? parts.join(" · ") : ""}`;
   });
+
 
 }
 
